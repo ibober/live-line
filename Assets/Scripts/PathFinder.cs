@@ -1,31 +1,64 @@
+using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.AI;
 
 /// <summary>
-/// Class automagically finds and draws shortest path from point A to point B in the provided <see cref="NavigationSite"/>.
+/// Class automagically finds and draws shortest path from the transformation it's assigned to to the destination point at the provided <see cref="NavigationSite"/>.
 /// </summary>
 public class PathFinder : MonoBehaviour
 {
-    [Tooltip("Floors and obstacles provider.")]
+    private bool unsubscribe;
+    private NavMeshAgent navAgent;
+
+    [Tooltip("Walkable area and impassable objects provider.")]
     public NavigationSite site;
 
-    [Tooltip("Start point of the path.")]
-    public Transform pointA;
+    [Tooltip("Alternative destination points. Closest one will be selected.")]
+    public Transform[] alternativeDestinations;
 
-    [Tooltip("Finish point of the path.")]
-    public Transform pointB;
+    // TODO Set current GO as NavMeshAgent.
 
-    [Tooltip("Alternative finish points. Closest one will be selected.")]
-    public Transform[] alternativeExits;
-
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
     private void Start()
     {
-        
+        if (site.IsAnalysed)
+        {
+            PrepareNavigationSystem();
+        }
+        else
+        {
+            unsubscribe = true;
+            site.OnAnalysed += PrepareNavigationSystem;
+        }
     }
 
-    // Update is called once per frame
+    private void PrepareNavigationSystem()
+    {
+        // TODO Should we clear previously baked NavMesh?
+
+        foreach (var floor in site.Floors)
+        {
+            var navSurface = floor.AddComponent<NavMeshSurface>();
+            
+        }
+
+        foreach (var obstacle in site.Obstacles)
+        {
+            var navObstacle = obstacle.AddComponent<NavMeshObstacle>();
+
+        }
+
+    }
+
     private void Update()
     {
-        
+        // TODO Update visual path.
+    }
+
+    private void OnDestroy()
+    {
+        if (unsubscribe)
+        {
+            site.OnAnalysed -= PrepareNavigationSystem;
+        }
     }
 }
