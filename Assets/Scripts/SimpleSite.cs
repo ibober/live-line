@@ -6,20 +6,20 @@ using UnityEngine;
 /// </summary>
 public class SimpleSite : NavigationSite
 {
-    [Tooltip("Manually set walkable areas.")]
+    [Tooltip("Set walkable areas.")]
     public List<GameObject> floors;
 
-    [Tooltip("Manually set impassable objects.")]
+    [Tooltip("Set impassable objects.")]
     public List<GameObject> obstacles;
 
-    // In both overrides return manually set game objects.
+    /// <inheritdoc/>
     protected override List<GameObject> GetFloors() => floors;
 
+    /// <inheritdoc/>
     protected override List<GameObject> GetObstacles() => obstacles;
 
     private void Start()
     {
-        // We still need to call this method to set IsActive.
         Analyse();
     }
 }

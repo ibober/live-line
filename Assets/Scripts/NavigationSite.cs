@@ -8,6 +8,10 @@ using UnityEngine;
 public abstract class NavigationSite : MonoBehaviour
 {
     private bool isAnalysed;
+    private bool isAnalysing; // TODO Makes sense once analysis is implemented with Jobs.
+
+    [Tooltip("Don't trigger OnAnalysed delegates. Check if you plan to trigger further path calculations manually, e.g. in Editor mode.")]
+    public bool ignoreSiteAnalysisListeners;
 
     /// <summary>
     /// Override to collect all walkable areas.
@@ -43,7 +47,7 @@ public abstract class NavigationSite : MonoBehaviour
         set
         {
             isAnalysed = value;
-            if (isAnalysed)
+            if (isAnalysed && !ignoreSiteAnalysisListeners)
             {
                 OnAnalysed?.Invoke();
             }
@@ -51,13 +55,42 @@ public abstract class NavigationSite : MonoBehaviour
     }
 
     /// <summary>
-    /// Call this method whenever you want to collect <see cref="Floors"/> and <see cref="Obstacles"/>.
+    /// Call this method in inheritor class whenever you want to collect <see cref="Floors"/> and <see cref="Obstacles"/>.
     /// </summary>
     protected void Analyse()
     {
+        if (isAnalysing)
+        {
+            return;
+        }
+
+        isAnalysing = true;
         IsAnalysed = false;
-        Floors = GetFloors() ?? new List<GameObject>(0);
-        Obstacles = GetObstacles() ?? new List<GameObject>(0);
-        IsAnalysed = true;
+        try
+        {
+            Floors = GetFloors() ?? new List<GameObject>(0);
+            Obstacles = GetObstacles() ?? new List<GameObject>(0);
+            IsAnalysed = true;
+        }
+        catch (Exception x)
+        {
+            Debug.Log(x.ToString());
+        }
+        finally
+        {
+            isAnalysing = false;
+        }
     }
+
+    /// <summary>
+    /// Manually trigger analysis. When baking NavMesh in Editor, e.g.
+    /// </summary>
+    public virtual void TriggerSiteAnalysis()
+    {
+        Debug.Log("\nCollecting walkable areas and impassable objects on the site...");
+        Analyse();
+        Debug.Log($"\n{Floors.Count} floor{Floors.DecideEnding()} and {Obstacles.Count} obstacle{Obstacles.DecideEnding()} found.");
+    }
+
+    // TODO Validate floors and obstacles adding colliders or checking sizes.
 }

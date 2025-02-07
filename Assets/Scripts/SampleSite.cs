@@ -5,7 +5,7 @@ using UnityEngine;
 
 /// <summary>
 /// Example class which provides <see cref="PathFinder"/> with objects to navigate
-/// based on the BIM models from the <a href="https://apps.autodesk.com/RVT/en/Detail/Index?id=4018039617950599215">glTF Exporter for Revit</a> loaded into the scene.
+/// based on the English language BIM models from the <a href="https://apps.autodesk.com/RVT/en/Detail/Index?id=4018039617950599215">glTF Exporter for Revit</a> loaded into the scene.
 /// </summary>
 public class SampleSite : NavigationSite
 {
