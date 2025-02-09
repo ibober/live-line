@@ -1,6 +1,4 @@
-using System.Collections.Generic;
 using System.Linq;
-using Unity.AI.Navigation;
 using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.AI;
@@ -8,21 +6,24 @@ using UnityEngine.AI;
 /// <summary>
 /// Class automagically finds and draws shortest path from the transformation it's assigned to to the destination point at the provided <see cref="NavigationSite"/>.
 /// </summary>
-public class PathFinder : MonoBehaviour
+public partial class PathFinder : MonoBehaviour
 {
-    private const float MasDistanceToMesh = 2f;
+    private const float MaxDistanceToMesh = 2f;
 
+    private bool isBusy;
     private Transform endingPoint;
-    private NavMeshData navData;
     private NavMeshBuildSettings navSettings;
 
     [Space]
-    [Header("Evacuation site settings")]
+    [Header("Site settings")]
 
-    [Tooltip("Walkable area and impassable objects provider.")]
+    [Tooltip("Walkable area, passages and impassable objects provider.")]
     public NavigationSite siteAnalyser;
 
-    [Tooltip("Leave empty to take attached GO's position.")]
+    [Tooltip("Scriptable object which caches generated navigation data.")]
+    public NavDataCacher navDataCacher;
+
+    [Tooltip("Leave empty to take attached GO's tranfsorm.")]
     public Transform startingPoint;
 
     [Tooltip("Alternative destination points. Closest one will be selected.")]
@@ -39,10 +40,9 @@ public class PathFinder : MonoBehaviour
     [Range(0.5f, 1.5f)]
     public float agentWidth = 0.7f;
 
-    private bool IsSubscribed => siteAnalyser.OnAnalysed?.GetInvocationList().Any(d => d.Method.Name == nameof(Bake)) ?? false;
 
-    // TODO Force analysis.
     // TODO Extend for finding route.
+    private bool IsSubscribed => siteAnalyser.OnAnalysed?.GetInvocationList().Any(d => d.Method.Name == nameof(BakeNavMesh)) ?? false;
 
     private void Start()
     {
@@ -74,45 +74,166 @@ public class PathFinder : MonoBehaviour
     /// </summary>
     public void CalculatePath(bool force)
     {
-        // Validate input.
+        if (isBusy)
+        {
+            return;
+        }
+
+        isBusy = true;
+        try
+        {
+            if (!siteAnalyser.IsAnalysed)
+            {
+                if (force)
+                {
+                    var analysed = siteAnalyser.TriggerSiteAnalysis();
+                    if (!analysed)
+                    {
+#if UNITY_EDITOR
+                        Debug.Log($"Couldn't force-analyse navigation site.");
+#endif
+                        return;
+                    }
+                }
+                else
+                {
+#if UNITY_EDITOR
+                    Debug.Log($"Site is not analysed yet.");
+#endif
+                    return;
+                }
+            }
+
+            BakeNavMesh();
+
+            DrawPath();
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private void BakeNavMesh()
+    {
+        navSettings = NavMesh.GetSettingsCount() == 0
+            ? NavMesh.CreateSettings()
+            : NavMesh.GetSettingsByIndex(0);
+        navSettings.agentHeight = agentHeight;
+        navSettings.agentRadius = agentWidth / 2;
+        navSettings.minRegionArea = 0.1f; // This setting won't make sence if we set up MeshLinks through the doors.
+
+        // NOTE We have to make minRegionArea small enough so agent could pass door openings in walls.
+        // Given that minimum valid door width = 700mm,
+        // taking worker (agentWidth) as per input (e.g. 0.7),
+        // there is no room left to go through the opening: 700m - 2 * 0.7 / 2 = 0.
+        // Even if door is 1m wide, we have only 300mm to pass through, so the minRegionArea has to be twice smaller in that case - 0.15.
+
+        if (navDataCacher.TryGet(siteAnalyser.Name, out var navData))
+        {
+            navData = NavMeshBuilder.BuildNavMeshData(
+                navSettings,
+                siteAnalyser.Elements,
+                siteAnalyser.Bounds,
+                Vector3.zero,
+                Quaternion.identity);
+
+            navDataCacher.Set(siteAnalyser.Name, navData);
+        }
+        else
+        {
+            var updated = NavMeshBuilder.UpdateNavMeshData(
+                navData,
+                navSettings,
+                siteAnalyser.Elements,
+                siteAnalyser.Bounds);
+            // TODO What if NavMeshData wasn't updated?
+        }
+
+        //NavMesh.RemoveAllNavMeshData();
+
+        //navData.hideFlags = HideFlags.None;
+
+        // TODO If we add each time, how many instances are there?
+        var navDataInstance = NavMesh.AddNavMeshData(navData);
+        var test = navDataInstance.valid;
+
+        // TODO Cache baked NavMesh.
+    }
+
+    public void RemoveAllNavMeshData()
+    {
+        if (TryGetComponent<LineRenderer>(out var lineRenderer))
+        {
+#if UNITY_EDITOR
+            DestroyImmediate(lineRenderer);
+#else
+            Destroy(lineRenderer);
+#endif
+        }
+
+        NavMesh.RemoveAllNavMeshData();
+    }
+
+    private void DrawPath()
+    {
+        ValidatePoints();
+
+        var path = new NavMeshPath();
+
+        // TODO It also has to be a part of validation.
+        var pointsAreOver = NavMesh.SamplePosition(startingPoint.position, out NavMeshHit hitA, MaxDistanceToMesh, NavMesh.AllAreas);
+        pointsAreOver |= NavMesh.SamplePosition(endingPoint.position, out NavMeshHit hitB, MaxDistanceToMesh, NavMesh.AllAreas);
+        if (!pointsAreOver)
+        {
+            //TODO Probably NavMesh.FindClosestEdge could be used to find at least something.
+            Debug.Log("Points are not in a walkable area.");
+            return;
+        }
+
+        if (NavMesh.CalculatePath(hitA.position, hitB.position, NavMesh.AllAreas, path))
+        {
+            VisualisePath(path);
+            return;
+            for (int i = 0; i < path.corners.Length - 1; i++)
+            {
+                // TODO Prepare navigation instructions.
+                // TODO Use LineRenderer.
+                Debug.DrawLine(path.corners[i], path.corners[i + 1], Color.red, 10.0f);
+            }
+        }
+        else
+        {
+            Debug.LogWarning("\nNo valid path between PointA and PointB." +
+                "\nShowing only direction to the destination.");
+
+            for (int i = 0; i < path.corners.Length - 1; i++)
+            {
+                // TODO Prepare navigation instructions.
+                // TODO Use LineRenderer.
+                Debug.DrawLine(path.corners[i], path.corners[i + 1], Color.red, 10.0f);
+            }
+        }
+    }
+
+    private bool ValidatePoints()
+    {
+        // Validate start and destination points.
         if (destinations.Length == 0)
         {
 #if UNITY_EDITOR
             // TODO Ctrl+F all Debug.Log and replase with better logging system.
             Debug.Log($"Nowhere to go. No {nameof(destinations)} set.");
 #endif
-            return;
+            return false;
         }
 
-        if (!siteAnalyser.IsAnalysed)
-        {
-            if (force)
-            {
-                siteAnalyser.TriggerSiteAnalysis();
-            }
-            else
-            {
-#if UNITY_EDITOR
-                Debug.Log($"Site is not analysed yet.");
-#endif
-                return;
-            }
-        }
-
-        Prepare();
-
-        Bake();
-
-        DrawPath();
-    }
-
-    private void Prepare()
-    {
-        if ((startingPoint?.ToString() ?? "null") == "null") // Strangely it says startingPoint is not equal null if though it's not filled in Editor.
+        if ((startingPoint?.ToString() ?? "null") == "null") // Strangely it says startingPoint is not equal null if though it's not assigned in Editor.
         {
             startingPoint = transform;
         }
 
+        // TODO Directly closest destination might not be at the shortest path to go to.
         endingPoint = destinations[0];
         var distance = Vector3.Distance(endingPoint.position, startingPoint.position);
         for (int i = 1; i < destinations.Length; i++)
@@ -125,115 +246,33 @@ public class PathFinder : MonoBehaviour
             }
         }
 
-        // TODO In theory directly closest destination might not be at the shortest path to go to.
-
-        navSettings = NavMesh.GetSettingsCount() == 0
-            ? NavMesh.CreateSettings()
-            : NavMesh.GetSettingsByIndex(0);
-        navSettings.agentHeight = agentHeight;
-        navSettings.agentRadius = agentWidth / 2;
+        return true;
     }
 
-    private void Bake()
+    private void VisualisePath(NavMeshPath path)
     {
-        var bounds = new Bounds();
-        var navSources = new List<NavMeshBuildSource>();
-        foreach (var floor in siteAnalyser.Floors)
-        {
-            var bb = floor.GetComponent<Renderer>()?.bounds;
-            bounds.Encapsulate(bb.GetValueOrDefault());
-
-            var navSurface = floor.GetOrAddComponent<NavMeshSurface>(); // TODO Do we need to set it since we are making all from code?..
-
-            var meshFilter = floor.GetComponent<MeshFilter>();
-            var source = new NavMeshBuildSource
-            {
-                component = navSurface,
-                shape = NavMeshBuildSourceShape.Mesh, // TODO Consider limitation in 100K units in size.
-                sourceObject = meshFilter.sharedMesh,
-                transform = floor.transform.localToWorldMatrix,
-                area = 0, // Built-in Non Walkable Navigation Area
-            };
-            navSources.Add(source);
-        }
-
-        foreach (var obstacle in siteAnalyser.Obstacles)
-        {
-            // TODO Don't really need box colliders, but NavMeshObstacles.
-            var navObstacle = obstacle.GetOrAddComponent<NavMeshObstacle>(); // TODO Do we need to set it since we are making all from code?..
-
-            // TODO Set collider (if there is no one) based on the shape of the mesh.
-            //obstacle.GetOrAddComponent<Collider>();
-            var collider = obstacle.GetOrAddComponent<BoxCollider>();
-            bounds.Encapsulate(collider.bounds);
-            var source = new NavMeshBuildSource
-            {
-                component = navObstacle,
-                shape = NavMeshBuildSourceShape.Box, // TODO Determine shape based on the collider set to the GO.
-                transform = collider.transform.localToWorldMatrix,
-                size = collider.bounds.size,
-                area = 1, // Built-in Non Walkable Navigation Area
-            };
-            navSources.Add(source);
-        }
-
-        // TODO Cache NavMesheData per floor or per model. Could even upload it to the cloud to share with collegues?
-        //NavMesh.AddNavMeshData(navData1);
-
-        // TODO Decide if it makes sence to have many settings.
-        //var navSettingsFloor1 = NavMesh.CreateSettings();
-
-        if ((navData?.ToString() ?? "null") == "null")
-        {
-            navData = NavMeshBuilder.BuildNavMeshData(
-                navSettings,
-                navSources,
-                bounds,
-                Vector3.zero,
-                Quaternion.identity);
-        }
-        else
-        {
-            NavMesh.RemoveAllNavMeshData();
-
-            // TODO Delete and recreate if it wasn't updated.
-            _ = NavMeshBuilder.UpdateNavMeshData(
-                navData,
-                navSettings,
-                navSources,
-                bounds);
-        }
-        _ = NavMesh.AddNavMeshData(navData);
-
-        // TODO Cache baked NavMesh.
+        var lineRenderer = this.GetOrAddComponent<LineRenderer>();
+        lineRenderer.positionCount = path.corners.Length;
+        lineRenderer.SetPositions(path.corners);
+        lineRenderer.material.color = Color.red;
+        lineRenderer.widthMultiplier = 0.7f;
+        lineRenderer.startColor = Color.red;
+        lineRenderer.endColor = Color.red;
+        lineRenderer.Simplify(0); // TODO Do I need it really? May be for the navigation instructions.
+        lineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        lineRenderer.receiveShadows = false;
     }
 
-    private void DrawPath()
-    {
-        var path = new NavMeshPath();
 
-        // TODO It also has to be a part of validation.
-        var pointsAreOver = NavMesh.SamplePosition(startingPoint.position, out NavMeshHit hitA, MasDistanceToMesh, NavMesh.AllAreas);
-        pointsAreOver |= NavMesh.SamplePosition(endingPoint.position, out NavMeshHit hitB, MasDistanceToMesh, NavMesh.AllAreas);
-        if (!pointsAreOver)
+
+    internal void CacheNavData(string siteName, NavMeshData navData)
+    {
+        if (navDataCacher == null)
         {
-            Debug.Log("Points are not in a walkable area.");
+            Debug.LogWarning($"{nameof(navDataCacher)} is not set.");
             return;
         }
 
-        if (NavMesh.CalculatePath(hitA.position, hitB.position, NavMesh.AllAreas, path))
-        {
-            for (int i = 0; i < path.corners.Length - 1; i++)
-            {
-                // TODO Prepare navigation instructions.
-                Debug.DrawLine(path.corners[i], path.corners[i + 1], Color.red, 10.0f);
-            }
-        }
-        else
-        {
-            Debug.LogWarning("\nNo valid path between PointA and PointB." +
-                "\nShowing only direction to the destination.");
-            Debug.DrawLine(startingPoint.position, endingPoint.position, Color.red, 10.0f, depthTest: false);
-        }
+        navDataCacher.Set(siteName, navData);
     }
 }
