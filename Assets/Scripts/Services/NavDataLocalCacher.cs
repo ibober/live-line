@@ -29,6 +29,11 @@ internal class NavDataLocalCacher : NavDataCacher
         try
         {
             var fileName = siteName + NavDataFileExtension;
+            if (!File.Exists(fileName))
+            {
+                return false;
+            }
+
             var formatter = new BinaryFormatter();
             using var stream = new FileStream(fileName, FileMode.Open, FileAccess.Read);
             navData = (NavMeshData)formatter.Deserialize(stream);

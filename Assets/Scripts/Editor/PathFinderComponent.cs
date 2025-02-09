@@ -9,15 +9,9 @@ public partial class PathFinderComponent : Editor
         DrawDefaultInspector();
 
         var component = (PathFinder)target;
-        if (GUILayout.Button("Cache NavMesh"))
+        if (GUILayout.Button("Visualise the Path"))
         {
-            // TODO Implement caching NavMeshSurfaceInstance.
-        }
-        if (GUILayout.Button("Remove all NavMeshData"))
-        {
-            component.RemoveAllNavMeshData();
-            component.CalculatePath(force: true);
-            //component.CacheNavData(string.Empty, null);
+            component.DrawPath();
         }
     }
 }

@@ -16,13 +16,13 @@ public class SimpleNavigationSite : NavigationSite
     public List<GameObject> doors;
 
     /// <inheritdoc/>
-    protected override List<GameObject> GetFloors() => floors;
+    protected override List<GameObject> CollectFloors() => floors;
 
     /// <inheritdoc/>
-    protected override List<GameObject> GetObstacles() => obstacles;
+    protected override List<GameObject> CollectObstacles() => obstacles;
 
     /// <inheritdoc/>
-    protected override List<GameObject> GetPassages() => doors;
+    protected override List<GameObject> CollectPassages() => doors;
 
     private void Start()
     {

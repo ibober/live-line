@@ -9,12 +9,12 @@ using UnityEngine;
 /// </summary>
 public class SampleNavigationSite : NavigationSite
 {
-    protected override List<GameObject> GetFloors()
+    protected override List<GameObject> CollectFloors()
     {
         return FindElementsOfCategory(transform, "Topography", "Floors", "Stairs");
     }
 
-    protected override List<GameObject> GetObstacles()
+    protected override List<GameObject> CollectObstacles()
     {
         var obstacles = FindElementsOfCategory(transform, "Walls");
         var furniture = FindElementsOfCategory(transform, "Furniture");
@@ -24,7 +24,7 @@ public class SampleNavigationSite : NavigationSite
         return obstacles;
     }
 
-    protected override List<GameObject> GetPassages()
+    protected override List<GameObject> CollectPassages()
     {
         return FindElementsOfCategory(transform, "Doors");
     }

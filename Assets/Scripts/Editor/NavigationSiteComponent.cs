@@ -11,14 +11,20 @@ public class NavigationSiteComponent : Editor
             MessageType.Info);
 
         DrawPropertiesExcluding(serializedObject, nameof(NavigationSite.ignoreSiteAnalysisListeners));
+
         var ignoreDelegatesField = serializedObject.FindProperty(nameof(NavigationSite.ignoreSiteAnalysisListeners));
         EditorGUILayout.PropertyField(ignoreDelegatesField);
         serializedObject.ApplyModifiedProperties();
 
-        if (GUILayout.Button("Analyse site collecting floors and obstacles."))
+        var component = (NavigationSite)target;
+        if (GUILayout.Button("Cache"))
         {
-            var component = (NavigationSite)target;
-            component.TriggerSiteAnalysis();
+            component.Analyse();
+        }
+
+        if (GUILayout.Button("Remove all NavMeshData"))
+        {
+            component.RemoveAllNavMeshData();
         }
     }
 }

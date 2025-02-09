@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.AI.Navigation;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -9,7 +10,12 @@ using UnityEngine.AI;
 public abstract class NavigationSite : MonoBehaviour
 {
     private bool isAnalysed;
-    private bool isAnalysing; // TODO Makes sense once analysis is implemented async way with Jobs or Coroutines.
+    private bool isBusy; // TODO Makes sense once analysis is implemented async way with Jobs or Coroutines.
+
+    private List<NavMeshBuildSource> elements;
+    private Bounds bounds;
+
+    [Space]
 
     // TODO Decide if this property is needed.
     [Tooltip("Don't trigger OnAnalysed delegates. Check if you plan to trigger further path calculations manually.")]
@@ -17,6 +23,14 @@ public abstract class NavigationSite : MonoBehaviour
 
     [Tooltip("Scriptable object which caches generated navigation data.")]
     public NavDataCacher navDataCacher;
+
+    [Tooltip("Man height with a safety hat (when he's crawling under obstacles in the worst case).")]
+    [Range(1.5f, 2.1f)]
+    public float minimumPassageHeight = 1.7f;
+
+    [Tooltip("Man shaulders width (when he's crab-walking through tiny space).")]
+    [Range(0.5f, 1.5f)]
+    public float minimumPassageWidth = 0.7f;
 
     /// <summary>
     /// Name of the navigation site.
@@ -27,20 +41,20 @@ public abstract class NavigationSite : MonoBehaviour
     /// Override to collect all walkable areas.
     /// <see cref="PathFinder"/> will utilize all GOs with <see cref="MeshFilter"/> and <see cref="Renderer"/> components.
     /// </summary>
-    protected abstract List<GameObject> GetFloors();
+    protected abstract List<GameObject> CollectFloors();
 
     /// <summary>
     /// Override to collect all impassable objects.
     /// <see cref="PathFinder"/> will utilize all GOs with <see cref="MeshFilter"/> and <see cref="Renderer"/> components.
     /// </summary>
-    protected abstract List<GameObject> GetObstacles();
+    protected abstract List<GameObject> CollectObstacles();
 
     /// <summary>
     /// Override to collect walk-through objects, like doors.
     /// <see cref="PathFinder"/> will utilize all GOs with <see cref="MeshFilter"/> and <see cref="Renderer"/> components.
     /// </summary>
     /// <returns></returns>
-    protected abstract List<GameObject> GetPassages();
+    protected abstract List<GameObject> CollectPassages();
 
     /// <summary>
     /// Walkable areas on the site.
@@ -58,17 +72,8 @@ public abstract class NavigationSite : MonoBehaviour
     public List<GameObject> Passages { get; private set; }
 
     /// <summary>
-    /// <see cref="NavMeshBuildSource"/>s collection to build <see cref="NavMesh"/>.
-    /// </summary>
-    public List<NavMeshBuildSource> Elements { get; private set; }
-
-    /// <summary>
-    /// <see cref="Bounds"/> which wraps all <see cref="Elements"/> to build <see cref="NavMesh"/>.
-    /// </summary>
-    public Bounds Bounds { get; private set; }
-
-    /// <summary>
-    /// The event is called when <see cref="Floors"/> and <see cref="Obstacles"/> properties both are ready to provide valid information.
+    /// The event is called each time <see cref="NavMeshData"/> is updated.
+    /// Listen to update path.
     /// </summary>
     public Action OnAnalysed;
 
@@ -89,25 +94,25 @@ public abstract class NavigationSite : MonoBehaviour
     }
 
     /// <summary>
-    /// Call this method in inheritor class whenever you want to collect <see cref="Floors"/>, <see cref="Obstacles"/> and <see cref="Passages"/>.
+    /// Collects <see cref="Floors"/>, <see cref="Obstacles"/> and <see cref="Passages"/> and caches baked NavMeshData.
     /// </summary>
-    protected void Analyse()
+    public void Analyse()
     {
-        if (isAnalysing)
+        if (isBusy)
         {
             return;
         }
 
-        isAnalysing = true;
+        isBusy = true;
         IsAnalysed = false;
         try
         {
-            Floors = GetFloors() ?? new List<GameObject>(0);
-            Obstacles = GetObstacles() ?? new List<GameObject>(0);
-            Passages = GetPassages() ?? new List<GameObject>(0);
+            Floors = CollectFloors() ?? new List<GameObject>(0);
+            Obstacles = CollectObstacles() ?? new List<GameObject>(0);
+            Passages = CollectPassages() ?? new List<GameObject>(0);
 
-            Elements = new List<NavMeshBuildSource>();
-            Bounds = new Bounds();
+            elements = new List<NavMeshBuildSource>();
+            bounds = new Bounds();
             foreach (var floor in Floors)
             {
                 var meshFilters = floor.GetComponentsInChildren<MeshFilter>();
@@ -119,7 +124,7 @@ public abstract class NavigationSite : MonoBehaviour
                         // Ignore invisible objects.
                         continue;
                     }
-                    Bounds.Encapsulate(renderer.bounds);
+                    bounds.Encapsulate(renderer.bounds);
 
                     // Add to sources.
                     var source = new NavMeshBuildSource
@@ -130,7 +135,7 @@ public abstract class NavigationSite : MonoBehaviour
                         size = renderer.bounds.size,
                         area = 0, // Built-in Walkable Navigation Area
                     };
-                    Elements.Add(source);
+                    elements.Add(source);
                 }
             }
 
@@ -145,7 +150,7 @@ public abstract class NavigationSite : MonoBehaviour
                         // Ignore invisible objects.
                         continue;
                     }
-                    Bounds.Encapsulate(renderer.bounds);
+                    bounds.Encapsulate(renderer.bounds);
 
                     var source = new NavMeshBuildSource
                     {
@@ -155,10 +160,11 @@ public abstract class NavigationSite : MonoBehaviour
                         size = renderer.bounds.size,
                         area = 1, // Built-in Non Walkable Navigation Area
                     };
-                    Elements.Add(source);
+                    elements.Add(source);
                 }
             }
 
+            // TODO We could determine minimumPassageHeight and minimumPassageWidth from bounds of the objects below.
             //foreach (var pass in Passages)
             //{
             //    var navModifier = pass.GetOrAddComponent<NavMeshModifier>();
@@ -175,7 +181,16 @@ public abstract class NavigationSite : MonoBehaviour
             //    //    area = 0, // Built-in Non Walkable Navigation Area
             //    //};
             //    //Elements.Add(source);
+
+            //    //var link = new NavMeshLinkData
+            //    //{
+            //    //    bidirectional = true,
+            //    //    width =
+            //    //area = 0,
+            //    //}
             //}
+
+            BakeNavMesh();
 
             IsAnalysed = true;
         }
@@ -185,21 +200,69 @@ public abstract class NavigationSite : MonoBehaviour
         }
         finally
         {
-            isAnalysing = false;
+            isBusy = false;
         }
     }
 
-    /// <summary>
-    /// Manually triggers analysis. When baking NavMesh in Editor, e.g.
-    /// </summary>
-    public virtual bool TriggerSiteAnalysis()
+    private void BakeNavMesh()
     {
-        Debug.Log("\nCollecting walkable areas and impassable objects on the site...");
-        Analyse();
-        Debug.Log($"\n" +
-            $"{Floors.Count} floor{Floors.DecideEnding()}, " +
-            $"{Obstacles.Count} obstacle{Obstacles.DecideEnding()} and " +
-            $"{Passages.Count} passage{Passages.DecideEnding()} found.");
-        return isAnalysed;
+        var navSettings = NavMesh.GetSettingsCount() == 0
+            ? NavMesh.CreateSettings()
+            : NavMesh.GetSettingsByIndex(0);
+        navSettings.agentHeight = minimumPassageHeight;
+        navSettings.agentRadius = minimumPassageWidth / 2;
+        //navSettings.overrideVoxelSize = true;
+        //navSettings.voxelSize = minimumPassageWidth / 2;
+        //navSettings.overrideTileSize = true;
+        //navSettings.tileSize = 1;
+
+        // NOTE We have to make minRegionArea small enough so agent could pass door openings in walls.
+        // Given that minimum valid door width = 700mm,
+        // taking worker (agentWidth) as per input (e.g. 0.7),
+        // there is no room left to go through the opening: 700m - 2 * 0.7 / 2 = 0.
+        // Even if door is 1m wide, we have only 300mm to pass through, so the minRegionArea has to be twice smaller in that case - 0.15.
+        if (!navDataCacher.TryGet(this.Name, out var navData))
+        {
+            navData = NavMeshBuilder.BuildNavMeshData(
+                navSettings,
+                this.elements,
+                this.bounds,
+                Vector3.zero,
+                Quaternion.identity);
+
+            navDataCacher.Set(this.Name, navData);
+        }
+        else
+        {
+            var updated = NavMeshBuilder.UpdateNavMeshData(
+                navData,
+                navSettings,
+                this.elements,
+                this.bounds);
+
+            // TODO What if NavMeshData wasn't updated?
+        }
+
+        navData.hideFlags = HideFlags.None;
+        
+        // TODO If we add each time, how many instances are there?
+        //NavMesh.RemoveAllNavMeshData();
+        
+        var navDataInstance = NavMesh.AddNavMeshData(navData); // TODO Discard instance.
+    }
+
+    public void RemoveAllNavMeshData()
+    {
+        if (TryGetComponent<LineRenderer>(out var lineRenderer))
+        {
+#if UNITY_EDITOR
+            DestroyImmediate(lineRenderer);
+#else
+            Destroy(lineRenderer);
+#endif
+        }
+
+        NavMesh.RemoveAllNavMeshData();
+        IsAnalysed = false;
     }
 }
