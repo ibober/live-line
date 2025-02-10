@@ -400,10 +400,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 23043526c07497c4ca54b2c2d9db2660, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  ignoreSiteAnalysisListeners: 0
-  navDataCacher: {fileID: 11400000, guid: 50d6fa4c9a017cd489bbc1f7998464aa, type: 2}
   minimumPassageHeight: 1.7
-  minimumPassageWidth: 0.7
+  minimumPassageWidth: 0.5
+  ignoreSiteAnalysisListeners: 0
 --- !u!65 &570742038
 BoxCollider:
   m_ObjectHideFlags: 0

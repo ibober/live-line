@@ -12,4 +12,9 @@ public struct Constants
     /// Width of the path in meters.
     /// </summary>
     public const float PathWidth = 0.3f;
+
+    /// <summary>
+    /// Rise path above the <see cref="NavMeshSurface"/> so it is not overlapped with floors.
+    /// </summary>
+    public const float PathElevation = 0.3f;
 }

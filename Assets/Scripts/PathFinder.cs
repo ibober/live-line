@@ -1,4 +1,5 @@
 using System.Linq;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -42,6 +43,7 @@ public partial class PathFinder : MonoBehaviour
     /// <summary>
     /// Navigation instructions to follow to get from current position to the closest destination.
     /// </summary>
+    // TODO Calculate navigation instructions.
     public NavigationInstructions Instructions { get; private set; }
 
     public void DrawPath()
@@ -121,6 +123,7 @@ public partial class PathFinder : MonoBehaviour
             return false;
         }
 
+        path = new NavMeshPath();
         var pathFound = NavMesh.CalculatePath(hitA.position, hitB.position, NavMesh.AllAreas, path);
         if (pathFound)
         {
@@ -158,9 +161,16 @@ public partial class PathFinder : MonoBehaviour
 
         // TODO Highlight the path and direction (when the path is not found) differently.
 
-        var corners = path != null
-            ? path.corners
-            : new Vector3[] { startingPoint, endingPoint.position };
+        var corners = default(Vector3[]);
+        if (path.status == NavMeshPathStatus.PathInvalid)
+        {
+            corners = new Vector3[] { startingPoint, endingPoint.position };
+        }
+        else
+        {
+            corners = path.corners.Select(c => c + new Vector3(0, Constants.PathElevation, 0)).ToArray();
+        }
+
         lineRenderer.positionCount = corners.Length;
         lineRenderer.SetPositions(corners);
 
@@ -201,7 +211,7 @@ public partial class PathFinder : MonoBehaviour
     {
         Relax();
 
-        if (lineRenderer != null)
+        if (lineRenderer != null && !lineRenderer.IsDestroyed())
         {
 #if UNITY_EDITOR
             DestroyImmediate(lineRenderer);
@@ -230,7 +240,7 @@ public partial class PathFinder : MonoBehaviour
         if (site == null)
             return;
 
-        if (site.OnAnalysed.GetInvocationList().Any(m => m.Method.Name == nameof(DrawPath)))
+        if (site.OnAnalysed?.GetInvocationList().Any(m => m.Method.Name == nameof(DrawPath)) ?? false)
         {
             site.OnAnalysed -= DrawPath;
         }
