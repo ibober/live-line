@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
-using Unity.AI.Navigation;
 using UnityEngine;
 using UnityEngine.AI;
 
 /// <summary>
 /// Inheritants of the class provide navigation system with walkable areas and impassable objects.
 /// </summary>
+[Serializable]
 public abstract class NavigationSite : MonoBehaviour
 {
     private bool isAnalysed;
@@ -244,10 +244,10 @@ public abstract class NavigationSite : MonoBehaviour
         }
 
         navData.hideFlags = HideFlags.None;
-        
+
         // TODO If we add each time, how many instances are there?
         //NavMesh.RemoveAllNavMeshData();
-        
+
         var navDataInstance = NavMesh.AddNavMeshData(navData); // TODO Discard instance.
     }
 

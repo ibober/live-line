@@ -7,7 +7,7 @@ public class NavigationSiteComponent : Editor
     public override void OnInspectorGUI()
     {
         EditorGUILayout.HelpBox(
-            "This is an implementation of NavigationSite component, which is a mandatory parameter for PathFinder component to build paths.",
+            $"This is a concrete implementation of the '{nameof(NavigationSite)}' component, which is mandatory parameter for '{nameof(PathFinder)}' component to build paths.",
             MessageType.Info);
 
         DrawPropertiesExcluding(serializedObject, nameof(NavigationSite.ignoreSiteAnalysisListeners));
@@ -17,7 +17,7 @@ public class NavigationSiteComponent : Editor
         serializedObject.ApplyModifiedProperties();
 
         var component = (NavigationSite)target;
-        if (GUILayout.Button("Cache"))
+        if (GUILayout.Button("Analyse"))
         {
             component.Analyse();
         }

@@ -1,3 +1,4 @@
+using System.Linq;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -7,31 +8,49 @@ using UnityEngine.AI;
 [ExecuteInEditMode]
 public partial class PathFinder : MonoBehaviour
 {
-    private const float MaxDistanceToMesh = 2f;
-
     private bool isBusy;
+    private Vector3 startingPoint;
     private Transform endingPoint;
+    private NavMeshPath path;
     private LineRenderer lineRenderer;
 
-    [Space]
-
+    [SerializeField]
     [Tooltip("Walkable area, passages and impassable objects provider.")]
-    public NavigationSite site;
+    private NavigationSite site;
+
+    /// <summary>
+    /// Walkable area, passages and impassable objects provider.
+    /// </summary>
+    public NavigationSite Site
+    {
+        get => site;
+        set
+        {
+            Relax();
+            site = value;
+            WatchOut();
+        }
+    }
 
     [Tooltip("Alternative destination points. Closest one will be selected.")]
     public Transform[] destinations;
 
+    [Tooltip("The distance you move before the path is recalculated.")]
+    [Min(0)]
+    public float updateRange = 1.5f;
+
+    /// <summary>
+    /// Navigation instructions to follow to get from current position to the closest destination.
+    /// </summary>
+    public NavigationInstructions Instructions { get; private set; }
+
     public void DrawPath()
     {
-        if (!ValidatePoints())
-        {
+        if (!ConfirmDestination())
             return;
-        }
 
         if (isBusy)
-        {
             return;
-        }
 
         isBusy = true;
         try
@@ -39,12 +58,17 @@ public partial class PathFinder : MonoBehaviour
             if (!site.IsAnalysed)
             {
 #if UNITY_EDITOR
-                Debug.Log($"Site is not analysed yet.");
+                // TODO Ctrl+F all Debug.Log and replase with better logging system,
+                // or wrap in #if UNITY_EDITOR compilation directive.
+                Debug.Log($"{Site.GetType().Name} is not analysed yet.");
 #endif
                 return;
             }
 
-            CalculatePath();
+            if (!CalculatePath())
+                return;
+
+            VisualisePath();
         }
         finally
         {
@@ -52,52 +76,17 @@ public partial class PathFinder : MonoBehaviour
         }
     }
 
-    private void CalculatePath()
+    private bool ConfirmDestination()
     {
-        var pointAisOver = NavMesh.SamplePosition(transform.position, out NavMeshHit hitA, MaxDistanceToMesh, NavMesh.AllAreas);
-        if (!pointAisOver)
-        {
-            Debug.LogWarning("Off the site location.");
-            return;
-        }
-
-        var pointBisOver = NavMesh.SamplePosition(endingPoint.position, out NavMeshHit hitB, MaxDistanceToMesh, NavMesh.AllAreas);
-        var edgeFound = NavMesh.FindClosestEdge(transform.position, out var hitBedge, NavMesh.AllAreas);
-        if (!pointBisOver)
-        {
-            Debug.Log("Points are not in a walkable area.");
-            return;
-        }
-
-        var path = new NavMeshPath();
-        if (NavMesh.CalculatePath(hitA.position, hitB.position, NavMesh.AllAreas, path))
-        {
-            VisualisePath(path);
-        }
-        else
-        {
-            Debug.LogWarning("\nNo valid path between PointA and PointB." +
-                "\nShowing only direction to the destination.");
-
-            // TODO Prepare navigation instructions.
-            // TODO Use LineRenderer.
-            Debug.DrawLine(transform.position, endingPoint.position, Color.red, 10.0f);
-        }
-    }
-
-    private bool ValidatePoints()
-    {
-        // Validate start and destination points.
         if (destinations.Length == 0)
         {
-#if UNITY_EDITOR
-            // TODO Ctrl+F all Debug.Log and replase with better logging system.
             Debug.Log($"Nowhere to go. No {nameof(destinations)} set.");
-#endif
             return false;
         }
 
         // TODO Directly closest destination might not be at the shortest path to go to.
+        // We might better calculate paths to all destinations (sorting them by the distance to each),
+        // and then draw the shortest path.
         endingPoint = destinations[0];
         var distance = Vector3.Distance(endingPoint.position, transform.position);
         for (int i = 1; i < destinations.Length; i++)
@@ -113,33 +102,80 @@ public partial class PathFinder : MonoBehaviour
         return true;
     }
 
-    private void VisualisePath(NavMeshPath path)
+    private bool CalculatePath()
+    {
+        var pointAisOver = NavMesh.SamplePosition(transform.position, out var hitA, Constants.MaxDistanceToNavSerface, NavMesh.AllAreas);
+        if (!pointAisOver)
+        {
+            Debug.LogWarning("Off the site location.");
+            return false;
+        }
+
+        var pointBisOver = NavMesh.SamplePosition(endingPoint.position, out var hitB, Constants.MaxDistanceToNavSerface, NavMesh.AllAreas);
+        if (!pointBisOver)
+        {
+            // TODO Try to find path to another destination, or
+            // try finding at least the closest point at the border of walkable area.
+            //var edgeFound = NavMesh.FindClosestEdge(transform.position, out var hitBedge, NavMesh.AllAreas);
+            Debug.Log("Destination is not in a walkable area.");
+            return false;
+        }
+
+        var pathFound = NavMesh.CalculatePath(hitA.position, hitB.position, NavMesh.AllAreas, path);
+        if (pathFound)
+        {
+            // Remember starting point to update the path only when move away for a decent distance.
+            startingPoint = transform.position;
+        }
+        else
+        {
+            // TODO Try to find path to another destination.
+            Debug.LogWarning("No valid path found." +
+                "\nShowing only direction to the destination.");
+        }
+
+        return true;
+    }
+
+    private void VisualisePath()
     {
         if (!this.gameObject.TryGetComponent(out lineRenderer))
         {
             lineRenderer = this.gameObject.AddComponent<LineRenderer>();
-        }
-        lineRenderer.positionCount = path.corners.Length;
-        lineRenderer.SetPositions(path.corners);
+            lineRenderer.enabled = true;
+            lineRenderer.widthMultiplier = Constants.PathWidth;
+            lineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            lineRenderer.receiveShadows = false;
 
-        var material = new Material(Shader.Find("Standard"));
-        material.color = Color.red;
+            var material = new Material(Shader.Find("Standard"));
+            material.color = Color.red;
 #if UNITY_EDITOR
-        lineRenderer.sharedMaterial = material;
+            lineRenderer.sharedMaterial = material;
 #else
-        lineRenderer.material = material;
+            lineRenderer.material = material;
 #endif
-        //(lineRenderer.sharedMaterial ?? lineRenderer.material).color = Color.red;
+        }
 
-        lineRenderer.widthMultiplier = 0.3f; //NavMesh.CreateSettings()
-        lineRenderer.startColor = Color.red;
-        lineRenderer.endColor = Color.red;
-        //lineRenderer.Simplify(1f); // Not sure if it worth ommiting corners which are closer to each other than this value.
-        lineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        lineRenderer.receiveShadows = false;
+        // TODO Highlight the path and direction (when the path is not found) differently.
+
+        var corners = path != null
+            ? path.corners
+            : new Vector3[] { startingPoint, endingPoint.position };
+        lineRenderer.positionCount = corners.Length;
+        lineRenderer.SetPositions(corners);
+
+        // TODO I'm not sure if it worth ommiting corners which are too closer to each other.
+        // If performance on mobile is OK - don't do it, prefer accuracy.
+        //lineRenderer.Simplify(1f); 
     }
 
-    #region Synchronize this script with LineRenderer component.
+    #region Lifecycle methods.
+
+    private void Awake()
+    {
+        startingPoint = transform.position;
+        WatchOut();
+    }
 
     private void OnEnable()
     {
@@ -153,8 +189,18 @@ public partial class PathFinder : MonoBehaviour
             lineRenderer.enabled = false;
     }
 
+    private void Update()
+    {
+        if (Vector3.Distance(transform.position, startingPoint) > updateRange)
+        {
+            DrawPath();
+        }
+    }
+
     private void OnDestroy()
     {
+        Relax();
+
         if (lineRenderer != null)
         {
 #if UNITY_EDITOR
@@ -162,6 +208,31 @@ public partial class PathFinder : MonoBehaviour
 #else
             Destroy(lineRenderer);
 #endif
+        }
+    }
+
+    /// <summary>
+    /// Subscribes to the <see cref="site.OnAnalized"/>.
+    /// </summary>
+    private void WatchOut()
+    {
+        if (site == null)
+            return;
+
+        site.OnAnalysed += DrawPath;
+    }
+
+    /// <summary>
+    /// Unsubscribes from <see cref="site.OnAnalized"/>.
+    /// </summary>
+    private void Relax()
+    {
+        if (site == null)
+            return;
+
+        if (site.OnAnalysed.GetInvocationList().Any(m => m.Method.Name == nameof(DrawPath)))
+        {
+            site.OnAnalysed -= DrawPath;
         }
     }
 

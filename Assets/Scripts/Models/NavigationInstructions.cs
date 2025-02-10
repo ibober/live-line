@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-internal class NavigationInstructions : IEnumerable<string>
+public class NavigationInstructions : IEnumerable<string>
 {
     private LineRenderer line;
     private Dictionary<float, string> instructions;
