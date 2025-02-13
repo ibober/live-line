@@ -28,13 +28,6 @@ public struct Constants
 
     public struct Instructions
     {
-        public struct RecalculateConditions
-        {
-            public const float MaxOffThePathDistance = 2f;
-
-            public const int MaxKeyPointsDelta = 1;
-        }
-
         /// <summary>
         /// Minimum elevation to travel to treat it as going stairs.
         /// </summary>
@@ -56,7 +49,7 @@ public struct Constants
         public const float ShowMoreDetailsMinSpan = 3f;
 
         /// <summary>
-        /// Distance to the key point at which next instruction must satrt to appear.
+        /// Distance to the key point at which next instruction must start to appear.
         /// </summary>
         public const float TransitionDistance = 2f;
 
@@ -70,7 +63,7 @@ public struct Constants
         /// </summary>
         public static float ActualTransitionDistance(float span)
         {
-            return span > TransitionDistance ? TransitionRation : span * TransitionDistance;
+            return span > TransitionDistance ? TransitionDistance : (span * TransitionRation);
         }
     }
 }

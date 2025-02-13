@@ -216,7 +216,7 @@ public abstract class NavigationSite : MonoBehaviour
                 Vector3.zero,
                 Quaternion.identity);
 
-        NavMesh.RemoveAllNavMeshData(); // If we don't remove Unity adds more NavMeshSurfaces.
+        NavMesh.RemoveAllNavMeshData(); // If we don't remove, Unity adds more NavMeshSurfaces to the scene.
         _ = NavMesh.AddNavMeshData(navData);
     }
 }

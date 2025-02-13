@@ -1,4 +1,5 @@
 using System.Linq;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -40,12 +41,12 @@ public partial class PathFinder : MonoBehaviour
     [Min(0)]
     public float updateRange = 1.5f;
 
-    public float pathScrollSpeed = 0.5f;
+    [Tooltip("Speed of symbols running along the path to the destination")]
+    public float scrollSpeed = 0.5f;
 
     /// <summary>
     /// Navigation instructions to follow to get from current position to the closest destination.
     /// </summary>
-    // TODO Calculate navigation instructions.
     internal NavigationInstructions Instructions { get; private set; }
 
     public void DrawPath()
@@ -61,11 +62,10 @@ public partial class PathFinder : MonoBehaviour
         {
             if (!site.IsAnalysed)
             {
-#if UNITY_EDITOR
-                // TODO Ctrl+F all Debug.Log and replase with better logging system,
+                // TODO Ctrl+Shift+F all Debug.Log and replase with better logging system,
                 // or wrap in #if UNITY_EDITOR compilation directive.
-                Debug.Log($"{Site.GetType().Name} is not analysed yet.");
-#endif
+                Debug.Log($"{Site.gameObject.name} navigation site has not been analysed yet.");
+                WatchOut();
                 return;
             }
 
@@ -201,14 +201,20 @@ public partial class PathFinder : MonoBehaviour
 
     #region Lifecycle methods.
 
-#if UNITY_EDITOR
     private void Start()
-#else
-    private void Awake()
-#endif
     {
         startingPoint = transform.position;
+
+        if (site.IsAnalysed)
+        {
+            DrawPath();
+        }
+
         WatchOut();
+
+#if UNITY_EDITOR
+        EditorApplication.update += Update; // Meant to help with path scrolling but doen't really work.
+#endif
     }
 
     private void OnEnable()
@@ -217,17 +223,17 @@ public partial class PathFinder : MonoBehaviour
             lineRenderer.enabled = true;
     }
 
-    private void OnDisable()
-    {
-        if (lineRenderer != null)
-            lineRenderer.enabled = false;
-    }
-
     private void Update()
     {
         if (lineMaterial != null && lineMaterial.mainTextureOffset != null)
         {
-            var offset = -Time.time * pathScrollSpeed;
+            var offset =
+#if UNITY_EDITOR
+                (float)EditorApplication.timeSinceStartup
+#else
+                Time.time
+#endif
+                * -scrollSpeed;
             lineMaterial.mainTextureOffset = new Vector2(offset, 0);
         }
 
@@ -237,26 +243,40 @@ public partial class PathFinder : MonoBehaviour
         }
     }
 
+    private void OnDisable()
+    {
+        if (lineRenderer != null)
+        {
+            lineRenderer.enabled = false;
+#if UNITY_EDITOR
+            if (!Application.isPlaying)
+            {
+                DestroyImmediate(lineRenderer);
+            }
+#endif
+        }
+    }
+
     private void OnDestroy()
     {
         Relax();
 
         if (lineRenderer != null)
         {
-#if UNITY_EDITOR
-            DestroyImmediate(lineRenderer);
-#else
+#if !UNITY_EDITOR
             Destroy(lineRenderer);
 #endif
         }
     }
+
+    private bool Subscribed => site.OnAnalysed?.GetInvocationList().Any(m => m.Method.Name == nameof(DrawPath)) ?? false;
 
     /// <summary>
     /// Subscribes to the <see cref="site.OnAnalized"/>.
     /// </summary>
     private void WatchOut()
     {
-        if (site == null)
+        if (site == null || Subscribed)
             return;
 
         site.OnAnalysed += DrawPath;
@@ -267,13 +287,10 @@ public partial class PathFinder : MonoBehaviour
     /// </summary>
     private void Relax()
     {
-        if (site == null)
+        if (site == null || !Subscribed)
             return;
 
-        if (site.OnAnalysed?.GetInvocationList().Any(m => m.Method.Name == nameof(DrawPath)) ?? false)
-        {
-            site.OnAnalysed -= DrawPath;
-        }
+        site.OnAnalysed -= DrawPath;
     }
 
     #endregion

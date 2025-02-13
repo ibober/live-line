@@ -16,7 +16,9 @@ internal class NavigationInstruction
     /// <summary>
     /// Navigation instruction text.
     /// </summary>
-    public string Text { get; }
+    public string Text { get; private set; }
+
+    public string Notes { get; set; }
 
     /// <summary>
     /// Distance left to the end of the path when instruction appears.
@@ -26,12 +28,12 @@ internal class NavigationInstruction
     /// <summary>
     /// The distance along which instruction is valid.
     /// </summary>
-    public float DistanceSpan { get; }
+    public float DistanceSpan { get; private set; }
 
     /// <summary>
     /// Point on the path until which instruction is applicable.
     /// </summary>
-    public Vector3 ApplicablePoint { get; }
+    public Vector3 ApplicablePoint { get; private set; }
 
     public string UpdatedText(Vector3 actualPosition)
     {
@@ -48,7 +50,15 @@ internal class NavigationInstruction
             return Text;
 
         actualDistanceLeft ??= DistanceLeft;
-        var remainder = DistanceSpan - DistanceLeft - actualDistanceLeft.Value;
+        var remainder = DistanceSpan - (DistanceLeft - actualDistanceLeft.Value);
         return string.Format(Text, remainder);
+    }
+
+    public void Extend(NavigationInstruction nextInstruction)
+    {
+        canUpdate = nextInstruction.Text.Contains("{0}");
+        Text = nextInstruction.Text;
+        DistanceSpan += nextInstruction.DistanceSpan;
+        ApplicablePoint = nextInstruction.ApplicablePoint;
     }
 }

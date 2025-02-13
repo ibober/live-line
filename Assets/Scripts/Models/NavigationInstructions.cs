@@ -77,8 +77,7 @@ internal class NavigationInstructions : IEnumerable<NavigationInstruction>
             var candidate = GetInstruction(previousPoint, currentPoint, nextPoint, pathLength);
             if (candidate.DistanceSpan < Instructions.TransitionDistance)
             {
-                //instructions.Peek().ApplicablePoint = candidate.ApplicablePoint;
-                //instructions.Peek().DistanceSpan += candidate.DistanceSpan;
+                instructions.Peek().Extend(candidate);
                 continue;
             }
             if (Merge(remembered, candidate, out var instruction))

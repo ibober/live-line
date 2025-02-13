@@ -27,8 +27,6 @@ internal static class LineRendererExtensions
     /// Calculates the total squared length of the <see cref="LineRenderer"/> by summing up the magnitudes between its points.
     /// <para>This value can be taken as a progress measurement while navigating the pass.</para>
     /// </summary>
-    /// <param name="lineRenderer"></param>
-    /// <returns></returns>
     public static float GetTotalSqrMagnitude(this LineRenderer lineRenderer)
     {
         if (lineRenderer.positionCount < 2)

@@ -29,11 +29,6 @@ public class SampleNavigationSite : NavigationSite
         return FindElementsOfCategory(transform, "Doors");
     }
 
-    private void Start()
-    {
-        Analyse();
-    }
-
     /// <summary>
     /// Collects all children of the nodes named as categories supplied as parameter.
     /// </summary>
@@ -58,5 +53,10 @@ public class SampleNavigationSite : NavigationSite
         }
 
         return result;
+    }
+
+    private void Start()
+    {
+        Analyse();
     }
 }
