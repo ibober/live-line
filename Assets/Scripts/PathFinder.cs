@@ -44,7 +44,7 @@ public partial class PathFinder : MonoBehaviour
     /// Navigation instructions to follow to get from current position to the closest destination.
     /// </summary>
     // TODO Calculate navigation instructions.
-    public NavigationInstructions Instructions { get; private set; }
+    internal NavigationInstructions Instructions { get; private set; }
 
     public void DrawPath()
     {
@@ -67,8 +67,7 @@ public partial class PathFinder : MonoBehaviour
                 return;
             }
 
-            if (!CalculatePath())
-                return;
+            _ = CalculatePath();
 
             VisualisePath();
         }
@@ -90,12 +89,12 @@ public partial class PathFinder : MonoBehaviour
         // We might better calculate paths to all destinations (sorting them by the distance to each),
         // and then draw the shortest path.
         endingPoint = destinations[0];
-        var distance = Vector3.Distance(endingPoint.position, transform.position);
+        var closestDistanceSqr = (endingPoint.position - transform.position).sqrMagnitude;
         for (int i = 1; i < destinations.Length; i++)
         {
             var endingPointCandidate = destinations[i];
-            var newDistance = Vector3.Distance(endingPointCandidate.position, transform.position);
-            if (newDistance < distance)
+            var newDistanceSqr = (endingPointCandidate.position - transform.position).sqrMagnitude;
+            if (newDistanceSqr < closestDistanceSqr)
             {
                 endingPoint = endingPointCandidate;
             }
@@ -106,20 +105,22 @@ public partial class PathFinder : MonoBehaviour
 
     private bool CalculatePath()
     {
-        var pointAisOver = NavMesh.SamplePosition(transform.position, out var hitA, Constants.MaxDistanceToNavSerface, NavMesh.AllAreas);
+        path = null;
+        var pointAisOver = NavMesh.SamplePosition(transform.position, out var hitA, Constants.Path.MaxDistanceToNavSerface, NavMesh.AllAreas);
         if (!pointAisOver)
         {
             Debug.LogWarning("Off the site location.");
             return false;
         }
 
-        var pointBisOver = NavMesh.SamplePosition(endingPoint.position, out var hitB, Constants.MaxDistanceToNavSerface, NavMesh.AllAreas);
+        var pointBisOver = NavMesh.SamplePosition(endingPoint.position, out var hitB, Constants.Path.MaxDistanceToNavSerface, NavMesh.AllAreas);
         if (!pointBisOver)
         {
             // TODO Try to find path to another destination, or
             // try finding at least the closest point at the border of walkable area.
             //var edgeFound = NavMesh.FindClosestEdge(transform.position, out var hitBedge, NavMesh.AllAreas);
-            Debug.Log("Destination is not in a walkable area.");
+            Debug.Log("Destination is not in a walkable area." +
+                "\nShowing only direction to the destination.");
             return false;
         }
 
@@ -146,42 +147,52 @@ public partial class PathFinder : MonoBehaviour
         {
             lineRenderer = this.gameObject.AddComponent<LineRenderer>();
             lineRenderer.enabled = true;
-            lineRenderer.widthMultiplier = Constants.PathWidth;
+            lineRenderer.widthMultiplier = Constants.Path.Width;
             lineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             lineRenderer.receiveShadows = false;
 
-            var material = new Material(Shader.Find("Standard"));
+            var material = new Material(Shader.Find("Unlit/Transparent"));
             material.color = Color.red;
+            //material.SetTexture("",new Texture2D())
 #if UNITY_EDITOR
             lineRenderer.sharedMaterial = material;
 #else
             lineRenderer.material = material;
 #endif
+            lineRenderer.textureMode = LineTextureMode.Tile;
+            lineRenderer.textureScale = new Vector2(1 / Constants.Path.Width, 1);
         }
 
         // TODO Highlight the path and direction (when the path is not found) differently.
 
-        var corners = default(Vector3[]);
-        if (path.status == NavMeshPathStatus.PathInvalid)
+        Vector3[] corners;
+        if (path == null || path.status == NavMeshPathStatus.PathInvalid)
         {
             corners = new Vector3[] { startingPoint, endingPoint.position };
         }
         else
         {
-            corners = path.corners.Select(c => c + new Vector3(0, Constants.PathElevation, 0)).ToArray();
+            corners = path.corners.Select(c => c + new Vector3(0, Constants.Path.Elevation, 0)).ToArray();
         }
 
         lineRenderer.positionCount = corners.Length;
         lineRenderer.SetPositions(corners);
 
-        // TODO I'm not sure if it worth ommiting corners which are too closer to each other.
+        Instructions = new NavigationInstructions(lineRenderer);
+        Instructions.Calculate();
+        Instructions.Log();
+        // TODO I'm not sure if it worth ommiting corners which are too close to each other.
         // If performance on mobile is OK - don't do it, prefer accuracy.
         //lineRenderer.Simplify(1f); 
     }
 
     #region Lifecycle methods.
 
+#if UNITY_EDITOR
+    private void Start()
+#else
     private void Awake()
+#endif
     {
         startingPoint = transform.position;
         WatchOut();

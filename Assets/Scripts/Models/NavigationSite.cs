@@ -14,12 +14,12 @@ public abstract class NavigationSite : MonoBehaviour
     private List<NavMeshBuildSource> elements;
     private Bounds bounds;
 
-    [Tooltip("Man height with a safety hat (when he's crawling under obstacles in the worst case).")]
+    [Tooltip("Man's height with a safety hat (when he's crawling under obstacles in the worst case).")]
     [Range(1.2f, 2.1f)]
     public float minimumPassageHeight = 1.7f;
 
-    [Tooltip("Man shaulders width (when he's crab-walking through tiny space)." +
-        "\nThis value should not be big or door holes will become impassable." +
+    [Tooltip("Man's shaulders width (when he's crab-walking through tiny space in the worst case)." +
+        "\nThis value should not be big otherwise door holes will become impassable." +
         "\nIMO it affects precision more notisably than setting voxel size.")]
     [Range(0, 1.5f)]
     public float minimumPassageWidth = 0.5f;

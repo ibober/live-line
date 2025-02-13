@@ -1,31 +1,54 @@
 using UnityEngine;
 
-internal struct NavigationInstruction
+internal class NavigationInstruction
 {
-    public string Active { get; set; }
+    private bool canUpdate;
 
-    public string Next { get; set; }
-}
-
-internal static class InstructionsFactory
-{
-    public static string[] GetInstruction(Vector3 previousPosition, Vector3 currentPosition, Vector3 nextPosition)
+    public NavigationInstruction(string text, float remainder, float span, Vector3 applicablePoint)
     {
-
-        return new string[] { instructions[0], instructions[3] };
+        canUpdate = text.Contains("{0}");
+        Text = text;
+        DistanceLeft = remainder;
+        DistanceSpan = span;
+        ApplicablePoint = applicablePoint;
     }
 
-    private static string[] instructions =
+    /// <summary>
+    /// Navigation instruction text.
+    /// </summary>
+    public string Text { get; }
+
+    /// <summary>
+    /// Distance left to the end of the path when instruction appears.
+    /// </summary>
+    public float DistanceLeft { get; }
+
+    /// <summary>
+    /// The distance along which instruction is valid.
+    /// </summary>
+    public float DistanceSpan { get; }
+
+    /// <summary>
+    /// Point on the path until which instruction is applicable.
+    /// </summary>
+    public Vector3 ApplicablePoint { get; }
+
+    public string UpdatedText(Vector3 actualPosition)
     {
-        "Go stright",
-        "Go stright for {0} meter{1}",
-        "Turn left",
-        "Turn right",
-        "Go downstairs",
-        "Go upstairs",
-        "Pass the door stright",
-        "Pass {0} doors stright",
-        "Pass the door to the left",
-        "Pass the door to the right",
-    };
+        if (!canUpdate)
+            return Text;
+
+        var remainder = Vector3.Distance(actualPosition, ApplicablePoint) - Constants.Instructions.ActualTransitionDistance(DistanceSpan);
+        return string.Format(Text, remainder);
+    }
+
+    public string UpdatedText(float? actualDistanceLeft = null)
+    {
+        if (!canUpdate)
+            return Text;
+
+        actualDistanceLeft ??= DistanceLeft;
+        var remainder = DistanceSpan - DistanceLeft - actualDistanceLeft.Value;
+        return string.Format(Text, remainder);
+    }
 }
