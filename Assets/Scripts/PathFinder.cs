@@ -1,5 +1,4 @@
 using System.Linq;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -14,6 +13,7 @@ public partial class PathFinder : MonoBehaviour
     private Transform endingPoint;
     private NavMeshPath path;
     private LineRenderer lineRenderer;
+    private Material lineMaterial;
 
     [SerializeField]
     [Tooltip("Walkable area, passages and impassable objects provider.")]
@@ -39,6 +39,8 @@ public partial class PathFinder : MonoBehaviour
     [Tooltip("The distance you move before the path is recalculated.")]
     [Min(0)]
     public float updateRange = 1.5f;
+
+    public float pathScrollSpeed = 0.5f;
 
     /// <summary>
     /// Navigation instructions to follow to get from current position to the closest destination.
@@ -143,6 +145,7 @@ public partial class PathFinder : MonoBehaviour
 
     private void VisualisePath()
     {
+        var notPathOnlyDirection = path == null || path.status == NavMeshPathStatus.PathInvalid;
         if (!this.gameObject.TryGetComponent(out lineRenderer))
         {
             lineRenderer = this.gameObject.AddComponent<LineRenderer>();
@@ -150,23 +153,32 @@ public partial class PathFinder : MonoBehaviour
             lineRenderer.widthMultiplier = Constants.Path.Width;
             lineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             lineRenderer.receiveShadows = false;
-
-            var material = new Material(Shader.Find("Unlit/Transparent"));
-            material.color = Color.red;
-            //material.SetTexture("",new Texture2D())
-#if UNITY_EDITOR
-            lineRenderer.sharedMaterial = material;
-#else
-            lineRenderer.material = material;
-#endif
-            lineRenderer.textureMode = LineTextureMode.Tile;
-            lineRenderer.textureScale = new Vector2(1 / Constants.Path.Width, 1);
         }
 
-        // TODO Highlight the path and direction (when the path is not found) differently.
+        if (lineMaterial == null)
+        {
+            // TODO Might need to find with AssetDatabase.FindAssets.
+            lineMaterial = Resources.Load<Material>(Constants.Path.EvacuationLineMaterialPath);
+            if (lineMaterial != null || notPathOnlyDirection)
+            {
+                lineRenderer.textureMode = LineTextureMode.Tile;
+                lineRenderer.textureScale = new Vector2(1 / Constants.Path.Width, 1);
+            }
+            else
+            {
+                lineMaterial = new Material(Shader.Find("Standard"));
+                lineMaterial.color = Color.red;
+            }
+
+#if UNITY_EDITOR
+            lineRenderer.sharedMaterial = lineMaterial;
+#else
+            lineRenderer.material = lineMaterial;
+#endif
+        }
 
         Vector3[] corners;
-        if (path == null || path.status == NavMeshPathStatus.PathInvalid)
+        if (notPathOnlyDirection)
         {
             corners = new Vector3[] { startingPoint, endingPoint.position };
         }
@@ -178,12 +190,13 @@ public partial class PathFinder : MonoBehaviour
         lineRenderer.positionCount = corners.Length;
         lineRenderer.SetPositions(corners);
 
+        // TODO I'm not sure if it worth ommiting corners which are too close to each other.
+        // If performance on mobile is OK - don't do it, prefer accuracy.
+        //lineRenderer.Simplify(1f);
+
         Instructions = new NavigationInstructions(lineRenderer);
         Instructions.Calculate();
         Instructions.Log();
-        // TODO I'm not sure if it worth ommiting corners which are too close to each other.
-        // If performance on mobile is OK - don't do it, prefer accuracy.
-        //lineRenderer.Simplify(1f); 
     }
 
     #region Lifecycle methods.
@@ -212,6 +225,12 @@ public partial class PathFinder : MonoBehaviour
 
     private void Update()
     {
+        if (lineMaterial != null && lineMaterial.mainTextureOffset != null)
+        {
+            var offset = -Time.time * pathScrollSpeed;
+            lineMaterial.mainTextureOffset = new Vector2(offset, 0);
+        }
+
         if (Vector3.Distance(transform.position, startingPoint) > updateRange)
         {
             DrawPath();
@@ -222,7 +241,7 @@ public partial class PathFinder : MonoBehaviour
     {
         Relax();
 
-        if (lineRenderer != null && !lineRenderer.IsDestroyed())
+        if (lineRenderer != null)
         {
 #if UNITY_EDITOR
             DestroyImmediate(lineRenderer);

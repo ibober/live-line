@@ -207,8 +207,8 @@ internal class NavigationInstructions : IEnumerable<NavigationInstruction>
         {
             route.AppendLine($"{i.DistanceLeft} m - {i.UpdatedText()}");
         }
-        Debug.Log($"Navigation instructions" +
-            $"\nTotal distance to travel: {pathLength} meters" +
+        Debug.Log($"Total distance to travel: {pathLength} meters" +
+            $"\nNavigation instructions:" +
             $"\n{route.ToString()}");
     }
 

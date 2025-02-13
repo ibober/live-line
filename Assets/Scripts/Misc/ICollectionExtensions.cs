@@ -1,6 +1,6 @@
 ﻿using System.Collections;
 
-internal static class StringExtensions
+internal static class ICollectionExtensions
 {
     public static string DecideEnding(this ICollection collection)
     {

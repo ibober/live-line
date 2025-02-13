@@ -22,6 +22,8 @@ public struct Constants
         /// Rise path above the <see cref="NavMeshSurface"/> so it is not overlapped with floors.
         /// </summary>
         public const float Elevation = 0.3f;
+
+        public const string EvacuationLineMaterialPath = "Materials/EvacuationLine";
     }
 
     public struct Instructions
