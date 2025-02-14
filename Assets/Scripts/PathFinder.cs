@@ -192,9 +192,12 @@ public partial class PathFinder : MonoBehaviour
 
         // TODO I'm not sure if it worth ommiting corners which are too close to each other.
         // If performance on mobile is OK - don't do it, prefer accuracy.
+        // Though it might be better to generate instructions on simplified path...
         //lineRenderer.Simplify(1f);
 
         Instructions = new NavigationInstructions(lineRenderer);
+
+        // TODO Recalculate instructions only if current position is further than a threshold from the original path.
         Instructions.Calculate();
         Instructions.Log();
     }
@@ -211,10 +214,6 @@ public partial class PathFinder : MonoBehaviour
         }
 
         WatchOut();
-
-#if UNITY_EDITOR
-        EditorApplication.update += Update; // Meant to help with path scrolling but doen't really work.
-#endif
     }
 
     private void OnEnable()
@@ -227,13 +226,7 @@ public partial class PathFinder : MonoBehaviour
     {
         if (lineMaterial != null && lineMaterial.mainTextureOffset != null)
         {
-            var offset =
-#if UNITY_EDITOR
-                (float)EditorApplication.timeSinceStartup
-#else
-                Time.time
-#endif
-                * -scrollSpeed;
+            var offset = - Time.time * scrollSpeed;
             lineMaterial.mainTextureOffset = new Vector2(offset, 0);
         }
 
@@ -248,25 +241,12 @@ public partial class PathFinder : MonoBehaviour
         if (lineRenderer != null)
         {
             lineRenderer.enabled = false;
-#if UNITY_EDITOR
-            if (!Application.isPlaying)
-            {
-                DestroyImmediate(lineRenderer);
-            }
-#endif
         }
     }
 
     private void OnDestroy()
     {
         Relax();
-
-        if (lineRenderer != null)
-        {
-#if !UNITY_EDITOR
-            Destroy(lineRenderer);
-#endif
-        }
     }
 
     private bool Subscribed => site.OnAnalysed?.GetInvocationList().Any(m => m.Method.Name == nameof(DrawPath)) ?? false;

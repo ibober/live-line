@@ -54,11 +54,33 @@ internal class NavigationInstruction
         return string.Format(Text, remainder);
     }
 
-    public void Extend(NavigationInstruction nextInstruction)
+    public void ExtendTo(NavigationInstruction nextInstruction, InheritInstruction inheritInstruction = InheritInstruction.Longer)
     {
-        canUpdate = nextInstruction.Text.Contains("{0}");
-        Text = nextInstruction.Text;
+        if (inheritInstruction == InheritInstruction.Longer)
+            Text = nextInstruction.Text.Length > Text.Length ? nextInstruction.Text : Text;
+        else if (inheritInstruction == InheritInstruction.Another)
+            Text = nextInstruction.Text;
+        canUpdate = Text.Contains("{0}");
+        Notes += nextInstruction.Notes;
         DistanceSpan += nextInstruction.DistanceSpan;
         ApplicablePoint = nextInstruction.ApplicablePoint;
     }
+
+    public void PrependTo(NavigationInstruction previousInstruction, InheritInstruction inheritInstruction = InheritInstruction.Longer)
+    {
+        if (inheritInstruction == InheritInstruction.Longer)
+            Text = previousInstruction.Text.Length > Text.Length ? previousInstruction.Text : Text;
+        else if (inheritInstruction == InheritInstruction.Another)
+            Text = previousInstruction.Text;
+        canUpdate = Text.Contains("{0}");
+        Notes = previousInstruction.Notes + Notes;
+        DistanceSpan += previousInstruction.DistanceSpan;
+    }
+}
+
+internal enum InheritInstruction
+{
+    Longer = 0,
+    Current = 1,
+    Another = 2,
 }

@@ -31,7 +31,13 @@ public struct Constants
         /// <summary>
         /// Minimum elevation to travel to treat it as going stairs.
         /// </summary>
-        public const float MinStairElevation = 0.45f; // TODO Better change this to elevation ratio.
+        public const float MinStairElevation = 0.47f; // 3 standard steps 150 mm high + epsilon.
+
+        /// <summary>
+        /// If elevation per horizontal displacement is less than this ratio - we are not going any stairs.
+        /// <para>1 meter rise for 2 meters stright movement.</para>
+        /// </summary>
+        public const float MinStairsAngle = 26.565f;
 
         /// <summary>
         /// Minimum angle to treat direction change as a turn. In degrees.

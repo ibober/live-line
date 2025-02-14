@@ -58,7 +58,7 @@ internal class NavigationInstructions : IEnumerable<NavigationInstruction>
     /// <summary>
     /// First instruction we meet in the sequence of similar ones.
     /// </summary>
-    private NavigationInstruction remembered;
+    private NavigationInstruction nextInstruction;
 
     public void Calculate()
     {
@@ -67,34 +67,33 @@ internal class NavigationInstructions : IEnumerable<NavigationInstruction>
         var currentPoint = path.GetPosition(path.positionCount - 1);
         var previousPoint = path.GetPosition(path.positionCount - 2);
         pathLength = Vector3.Distance(currentPoint, previousPoint);
-        instructions.Push(GetInstruction(previousPoint, currentPoint, nextPoint, pathLength));
+        nextInstruction = GetInstruction(previousPoint, currentPoint, nextPoint, pathLength); // The very last instruction we see on the path.
+        instructions.Push(nextInstruction);
         for (int i = path.positionCount - 2; i > 1; i--)
         {
             nextPoint = path.GetPosition(i + 1);
             currentPoint = path.GetPosition(i);
             previousPoint = path.GetPosition(i - 1);
             pathLength += Vector3.Distance(currentPoint, nextPoint);
-            var candidate = GetInstruction(previousPoint, currentPoint, nextPoint, pathLength);
-            if (candidate.DistanceSpan < Instructions.TransitionDistance)
+            var currentInstruction = GetInstruction(previousPoint, currentPoint, nextPoint, pathLength);
+            
+            // TODO If instruction is "Turn" - we need to add another instruction right after that to go stright
+            // and we need to shorten previous instruction a little to show "Turn" in advance.
+            if (Merge(nextInstruction, currentInstruction))
             {
-                instructions.Peek().Extend(candidate);
+                // Proceed to the next span.
                 continue;
-            }
-            if (Merge(remembered, candidate, out var instruction))
-            {
-
             }
             else
             {
-                instructions.Push(instruction);
-                remembered = instruction;
+                instructions.Push(currentInstruction);
+                nextInstruction = currentInstruction;
             }
         }
         nextPoint = path.GetPosition(1);
         currentPoint = path.GetPosition(0);
         previousPoint = Vector3.positiveInfinity;
-        pathLength += Vector3.Distance(currentPoint, nextPoint);
-        instructions.Push(GetInstruction(previousPoint, currentPoint, nextPoint, pathLength));
+        instructions.Push(GetInstruction(previousPoint, currentPoint, nextPoint, pathLength)); // First instruction we see.
     }
 
     /// <summary>
@@ -108,13 +107,13 @@ internal class NavigationInstructions : IEnumerable<NavigationInstruction>
     private NavigationInstruction GetInstruction(Vector3 previousP, Vector3 currentP, Vector3 nextP, float distanceLeft)
     {
         float span;
-        if (nextP == Vector3.negativeInfinity)
+        if (nextP.Equals(Vector3.negativeInfinity))
         {
             // Arrived.
             span = Vector3.Distance(currentP, previousP);
             return new NavigationInstruction(DecideDestinationText(span), distanceLeft, span, currentP);
         }
-        else if (previousP == Vector3.positiveInfinity)
+        else if (previousP.Equals(Vector3.positiveInfinity))
         {
             // In the very beginning of the route.
             span = Vector3.Distance(currentP, nextP);
@@ -123,19 +122,20 @@ internal class NavigationInstructions : IEnumerable<NavigationInstruction>
 
         span = Vector3.Distance(currentP, nextP);
         var elevation = nextP.y - currentP.y;
-        if (elevation < -Instructions.MinStairElevation)
+        var outgoingDirection = nextP - currentP;
+        var verticalAngle = Vector3.Angle(Vector3.up, outgoingDirection);
+        if (elevation < -Instructions.MinStairElevation && verticalAngle > Instructions.MinStairsAngle)
         {
             // Going downstairs.
             return new NavigationInstruction(Hints[6], distanceLeft, span, currentP);
         }
-        else if (elevation > Instructions.MinStairElevation)
+        else if (elevation > Instructions.MinStairElevation && verticalAngle > Instructions.MinStairsAngle)
         {
             // Upstairs.
             return new NavigationInstruction(Hints[7], distanceLeft, span, currentP);
         }
 
         var incomingDirection = currentP - previousP;
-        var outgoingDirection = nextP - currentP;
 
         incomingDirection.y = 0;
         outgoingDirection.y = 0;
@@ -168,32 +168,53 @@ internal class NavigationInstructions : IEnumerable<NavigationInstruction>
     {
         intersection = Vector3.negativeInfinity;
 
-        // TODO Check if span intersects doors or is close to other objects of interest.
+        // TODO Check if span intersects any doors or is close to other objects of interest.
         var objects = objectsOfInterest.Where(go =>
         {
             // TODO Has to add collider or change logic to rely on bounds, position or smth.
             var direction = nextPosition - currentPosition;
             var ray = new Ray(currentPosition, direction);
-            return Physics.Raycast(ray, out var hit, direction.magnitude); // hit.transform.gameObject
+            return Physics.Raycast(ray, out var hit, direction.magnitude);
         });
 
         return false;
     }
 
-    // TODO Implement method to merge navigation instructions.
-    private bool Merge(NavigationInstruction next, NavigationInstruction first, out NavigationInstruction accumulated)
+    private bool Merge(NavigationInstruction first, NavigationInstruction next)
     {
-        accumulated = first;
-        if (first == null)
-            return false;
-
-        if (first.Text.StartsWith(Hints[0]))
+        var firstInstruction = first.Text.AsSpan();
+        var secondInstruction = next.Text.AsSpan();
+        var stright = Hints[0].AsSpan();
+        if (firstInstruction.StartsWith(stright)
+            && secondInstruction.StartsWith(stright))
         {
-
+            // Going stright.
+            first.ExtendTo(next);
+            return true;
         }
-        else if (first.Text.StartsWith("Turn left"))
-        {
 
+        if (next.DistanceSpan < Instructions.TransitionDistance
+            && secondInstruction.StartsWith(stright))
+        {
+            first.ExtendTo(next);
+            return true;
+        }
+
+        var destination = Hints[12].AsSpan().Slice(0, 10);
+        if (firstInstruction.StartsWith(destination)
+            && secondInstruction.StartsWith(destination))
+        {
+            // Going stright to the destination.
+            first.ExtendTo(next);
+            return true;
+        }
+
+        // TODO Merging "Turns" into "Turn arounds" requires directions, we have to joint this method with GetInstruction.
+
+        if (firstInstruction.SequenceEqual(secondInstruction))
+        {
+            first.ExtendTo(next);
+            return true;
         }
 
         return false;
@@ -213,12 +234,16 @@ internal class NavigationInstructions : IEnumerable<NavigationInstruction>
 
     #region IEnumerable and [] accessors
 
+    /// <summary>
+    /// Gets the instruction at the given distance to finish.
+    /// </summary>
     /// <param name="distanceLeft">Total distance left till the end of the path.</param>
     /// <returns>Text of the actual instruction.</returns>
     public string this[float distanceLeft]
     {
         get
         {
+            // TODO Improve with binary search as instructions are always sorted.
             var closestInstruction = instructions
                 .OrderBy(i => distanceLeft - i.DistanceLeft)
                 .First(i => distanceLeft - i.DistanceLeft > 0);
@@ -226,6 +251,9 @@ internal class NavigationInstructions : IEnumerable<NavigationInstruction>
         }
     }
 
+    /// <summary>
+    /// Gets the instruction at the given point near the path.
+    /// </summary>
     /// <param name="actualPosition">Current position closer to the path.</param>
     /// <returns>Text of the actual instruction.</returns>
     public string this[Vector3 actualPosition]
@@ -249,5 +277,5 @@ internal class NavigationInstructions : IEnumerable<NavigationInstruction>
         return GetEnumerator();
     }
 
-    #endregion IEnumerable
+    #endregion IEnumerable and [] accessors
 }
